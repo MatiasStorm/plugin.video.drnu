@@ -31,6 +31,7 @@ import xbmcplugin
 
 from resources.lib import tvapi
 from resources.lib import tvgui
+from resources.lib.logging import LOG
 
 import buggalo
 
@@ -136,9 +137,10 @@ class DrDkTvAddon(object):
             self.showMainMenu()
         else:
             items = self.api.getChildrenFrontItems('dr-' + areaSelected)
-            self.listSeries(items, add_area_selector=bool_setting('enable.areaitem'))
+            self.listShows(items)
 
     def showMainMenu(self):
+        LOG.info("Show main menu")
         items = list()
         # Live TV
         item = xbmcgui.ListItem(tr(30027), offscreen=True)
@@ -162,7 +164,7 @@ class DrDkTvAddon(object):
         item = xbmcgui.ListItem(tr(30025), offscreen=True)
         item.setArt({'fanart': self.fanart_image, 'icon': os.path.join(addon_path, 'resources', 'icons', 'new.png')})
         item.addContextMenuItems(self.menuItems, False)
-        items.append(('{}?listVideos={}'.format(self._plugin_url, tvapi.SLUG_PREMIERES), item, True))
+        items.append((self._plugin_url + '?listAllVideos=%s' % tvapi.SLUG_PREMIERES, item, True))
 
         # Themes
         item = xbmcgui.ListItem(tr(30028), offscreen=True)
@@ -215,7 +217,7 @@ class DrDkTvAddon(object):
             series = []
             for slug in self.favorites:
                 series.extend(self.api.searchSeries(slug))
-            self.listSeries(series, addToFavorites=False)
+            self.listShows(series, addToFavorites=False)
 
     def showRecentlyWatched(self):
         self._load()
@@ -271,6 +273,7 @@ class DrDkTvAddon(object):
 
     def showAZ(self):
         # All Program Series
+        LOG.info("Show A-Z")
         iconImage = os.path.join(addon_path, 'resources', 'icons', 'all.png')
         items = list()
         for programIndex in self.api.getProgramIndexes():
@@ -278,7 +281,7 @@ class DrDkTvAddon(object):
             item.setArt({'fanart': self.fanart_image, 'icon': iconImage})
             item.addContextMenuItems(self.menuItems, False)
 
-            url = self._plugin_url + '?listProgramSeriesByLetter=' + programIndex['_Param']
+            url = self._plugin_url + '?listProgramShowsByLetter=' + programIndex['_Param']
             items.append((url, item, True))
         xbmcplugin.addDirectoryItems(self._plugin_handle, items)
         xbmcplugin.endOfDirectory(self._plugin_handle)
@@ -303,9 +306,10 @@ class DrDkTvAddon(object):
         keyboard.doModal()
         if keyboard.isConfirmed():
             keyword = keyboard.getText()
-            self.listSeries(self.api.getSeries(keyword))
+            self.listShows(self.api.getShows(keyword))
 
-    def listSeries(self, items, addToFavorites=True, add_area_selector=False):
+    def listShows(self, items, addToFavorites=True):
+        LOG.info("List all shows")
         if not items:
             xbmcplugin.endOfDirectory(self._plugin_handle, succeeded=False)
             if not addToFavorites:
@@ -336,13 +340,51 @@ class DrDkTvAddon(object):
                           	 'fanart': self.api.redirectImageUrl(item['PrimaryImageUri'], fanart_w, fanart_h)})
                 listItem.addContextMenuItems(menuItems, False)
 
-                url = self._plugin_url + '?listVideos=' + item['SeriesSlug']
+                url = self._plugin_url + '?listSeries=' + item['SeriesSlug']
+                directoryItems.append((url, listItem, True))
+
+            xbmcplugin.addDirectoryItems(self._plugin_handle, directoryItems)
+            xbmcplugin.endOfDirectory(self._plugin_handle)
+            
+    def listSeries(self, items, addToFavorites=True):
+        LOG.info("List all series")
+        if not items:
+            xbmcplugin.endOfDirectory(self._plugin_handle, succeeded=False)
+            if not addToFavorites:
+                xbmcgui.Dialog().ok(addon_name, tr(30013),
+                                    tr(30018), tr(30019))
+            else:
+                xbmcgui.Dialog().ok(addon_name, tr(30013))
+        else:
+            directoryItems = list()
+            for item in items:
+                menuItems = list(self.menuItems)
+
+                title = item['Title'].replace('&', '%26').replace(',', '%2C')
+                if self.favorites.count(item['Title']) > 0:
+                    runScript = "RunPlugin(plugin://plugin.video.drnu/?delfavorite=%s)" % title
+                    menuItems.append((tr(30201), runScript))
+                else:
+                    runScript = "RunPlugin(plugin://plugin.video.drnu/?addfavorite=%s)" % title
+                    menuItems.append((tr(30200), runScript))
+
+
+                listItem = xbmcgui.ListItem(str(item["SeasonNumber"]) + ". " + item['Title'])
+                fanart_h = int(get_setting('fanart.size'))
+                fanart_w = int(fanart_h*16/9)            
+                listItem.setArt({'thumb': self.api.redirectImageUrl(item['PrimaryImageUri'], 640, 360),
+                          	 'icon': self.api.redirectImageUrl(item['PrimaryImageUri'], 75, 42),
+                          	 'fanart': self.api.redirectImageUrl(item['PrimaryImageUri'], fanart_w, fanart_h)})
+                listItem.addContextMenuItems(menuItems, False)
+
+                url = self._plugin_url + '?listVideos=' + item['Urn']
                 directoryItems.append((url, listItem, True))
 
             xbmcplugin.addDirectoryItems(self._plugin_handle, directoryItems)
             xbmcplugin.endOfDirectory(self._plugin_handle)
 
     def listEpisodes(self, items, addSortMethods=True):
+        LOG.info("List episodes")
         directoryItems = list()
         for item in items:
             if 'PrimaryAsset' not in item or 'Uri' not in item['PrimaryAsset'] or not item['PrimaryAsset']['Uri']:
@@ -496,10 +538,17 @@ class DrDkTvAddon(object):
                     self.showThemes()
 
             elif 'listThemeSeries' in PARAMS:
-                self.listSeries(self.api.getEpisodes(PARAMS['listThemeSeries']))
+                self.listShows(self.api.getAllEpisodes(PARAMS['listThemeSeries']))
 
-            elif 'listProgramSeriesByLetter' in PARAMS:
-                self.listSeries(self.api.getSeries(PARAMS['listProgramSeriesByLetter']))
+            elif 'listProgramShowsByLetter' in PARAMS:
+                self.listShows(self.api.getShows(PARAMS['listProgramShowsByLetter']))
+
+            elif 'listSeries' in PARAMS:
+                LOG.info("Listing series with slug: %s" % PARAMS["listSeries"])
+                self.listSeries(self.api.getSeries(PARAMS['listSeries']))
+
+            elif 'listAllVideos' in PARAMS:
+                self.listEpisodes(self.api.getAllEpisodes(PARAMS['listAllVideos']))
 
             elif 'listVideos' in PARAMS:
                 self.listEpisodes(self.api.getEpisodes(PARAMS['listVideos']))
@@ -529,10 +578,10 @@ class DrDkTvAddon(object):
                     self.showMainMenu()
                 elif area == 2:
                     items = self.api.getChildrenFrontItems('dr-ramasjang')
-                    self.listSeries(items, add_area_selector=True)
+                    self.listShows(items)
                 elif area == 3:
                     items = self.api.getChildrenFrontItems('dr-ultra')
-                    self.listSeries(items, add_area_selector=True)
+                    self.listShows(items)
 
         except tvapi.ApiException as ex:
             self.displayError(str(ex))

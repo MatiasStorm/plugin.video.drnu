@@ -40,6 +40,8 @@ if sys.version_info.major == 2:
 else:
     compat_str = str
     import urllib.parse as urlparse
+from resources.lib.logging import LOG
+
 ADDON = xbmcaddon.Addon()
 tr = xbmcaddon.Addon().getLocalizedString
 
@@ -92,9 +94,17 @@ class Api(object):
 
         return []
 
-    def getSeries(self, query):
-        result = self._http_request('/search/tv/programcards-latest-episode-with-asset/series-title-starts-with/{}'.format(query),
+    def getShows(self, query):
+        result = self._http_request('/search/tv/programcards-latest-episode-with-asset/series-title-starts-with/%s' % query,
                                     {'limit': 75})
+        return self._handle_paging(result)
+
+    def getSeries(self, slug):
+        result = self._http_request('/list/view/seasons', 
+                                    { 'id': slug,
+                                    'limit': 48, 
+                                     'onlyincludefirstepisode': True,
+                                     'expanded': True})
         return self._handle_paging(result)
 
     def searchSeries(self, query):
@@ -103,8 +113,21 @@ class Api(object):
         result = self._http_request('/search/tv/programcards-latest-episode-with-asset/series-title/{}'.format(cleaned_query))
         return self._handle_paging(result)
 
-    def getEpisodes(self, slug):
-        result = self._http_request('/list/{}'.format(slug), {'limit': 48, 'expanded': True})
+    def getAllEpisodes(self, slug):
+        result = self._http_request('/list/%s' % slug,
+                                    {'limit': 48,
+                                     'expanded': True})
+        return self._handle_paging(result)
+    
+    def getEpisodes(self, urn):
+        result = self._http_request(
+            '/list/view/season', 
+            {
+                'id': urn,
+                'limit': 48,
+                'expanded': True
+            }
+        )
         return self._handle_paging(result)
 
     def getEpisode(self, slug):
@@ -179,7 +202,8 @@ class Api(object):
                 url = self.API_URL + urlparse.quote(url, '/')
 
             if params:
-                url += '?' + urlparse.urlencode(params, doseq=True)
+                url += '?' + urllib.urlencode(params, doseq=True)
+            LOG.info("Get request on: %s" % url)
 
             try:
                 xbmc.log(url)
