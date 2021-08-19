@@ -202,7 +202,7 @@ class Api(object):
                 url = self.API_URL + urlparse.quote(url, '/')
 
             if params:
-                url += '?' + urllib.urlencode(params, doseq=True)
+                url += '?' + urlparse.urlencode(params, doseq=True)
             LOG.info("Get request on: %s" % url)
 
             try:

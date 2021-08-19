@@ -318,8 +318,6 @@ class DrDkTvAddon(object):
                 xbmcgui.Dialog().ok(addon_name, tr(30013))
         else:
             directoryItems = list()
-            if add_area_selector:
-                directoryItems.append((self._plugin_url + '?show=areaselector', self.area_item, True))
             for item in items:
                 menuItems = list(self.menuItems)
 
